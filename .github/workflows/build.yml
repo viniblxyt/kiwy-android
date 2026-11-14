@@ -1,0 +1,56 @@
+name: Gerar APK do Kiwy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Abrir o zip do projeto
+        run: unzip -o kiwy-android.zip -x '.github/*'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Chave de assinatura
+        run: |
+          if [ ! -f keystore.b64 ]; then
+            keytool -genkeypair -keystore app/kiwy.jks -alias kiwy -keyalg RSA -keysize 2048 -validity 12000 \
+              -storepass kiwyapp2026 -keypass kiwyapp2026 -dname "CN=Kiwy, O=Kiwy, C=BR"
+            base64 -w 76 app/kiwy.jks > keystore.b64
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add keystore.b64
+            git commit -m "Chave de assinatura do APK [skip ci]"
+            git push
+          else
+            base64 -d keystore.b64 > app/kiwy.jks
+          fi
+
+      - name: Compilar
+        run: |
+          gradle assembleRelease --no-daemon --stacktrace
+          cp app/build/outputs/apk/release/app-release.apk kiwy.apk
+
+      - name: Publicar versão
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.${{ github.run_number }}
+          name: Kiwy 1.${{ github.run_number }}
+          body: "Baixe o arquivo kiwy.apk abaixo e instale no celular."
+          files: kiwy.apk
+          make_latest: true
